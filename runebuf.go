@@ -3,6 +3,7 @@ package readline
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"io"
 	"strconv"
 	"strings"
@@ -35,7 +36,7 @@ type RuneBuffer struct {
 	sync.Mutex
 }
 
-func (r* RuneBuffer) pushKill(text []rune) {
+func (r *RuneBuffer) pushKill(text []rune) {
 	r.lastKill = append([]rune{}, text...)
 }
 
@@ -187,6 +188,9 @@ func (r *RuneBuffer) IsCursorInEnd() bool {
 
 func (r *RuneBuffer) Replace(ch rune) {
 	r.Refresh(func() {
+		if r.idx == len(r.buf) {
+			return
+		}
 		r.buf[r.idx] = ch
 	})
 }
@@ -221,7 +225,7 @@ func (r *RuneBuffer) DeleteWord() {
 	}
 	for i := init + 1; i < len(r.buf); i++ {
 		if !IsWordBreak(r.buf[i]) && IsWordBreak(r.buf[i-1]) {
-			r.pushKill(r.buf[r.idx:i-1])
+			r.pushKill(r.buf[r.idx : i-1])
 			r.Refresh(func() {
 				r.buf = append(r.buf[:r.idx], r.buf[i-1:]...)
 			})
@@ -350,7 +354,7 @@ func (r *RuneBuffer) Yank() {
 		return
 	}
 	r.Refresh(func() {
-		buf := make([]rune, 0, len(r.buf) + len(r.lastKill))
+		buf := make([]rune, 0, len(r.buf)+len(r.lastKill))
 		buf = append(buf, r.buf[:r.idx]...)
 		buf = append(buf, r.lastKill...)
 		buf = append(buf, r.buf[r.idx:]...)
@@ -478,7 +482,7 @@ func (r *RuneBuffer) Print() {
 }
 
 func (r *RuneBuffer) print() {
-	r.w.Write(r.output())
+	r.w.Write([]byte(r.output()))
 	r.hadClean = false
 }
 
@@ -492,56 +496,59 @@ func (r *RuneBuffer) output() []byte {
 		} else {
 			buf.Write([]byte(string(r.cfg.MaskRune)))
 		}
-		if len(r.buf) > r.idx {
-			buf.Write(r.getBackspaceSequence())
+		if len(r.buf) > r.idx { // Goes back but
+			buf.Write(r.cursorPosition())
 		}
 
 	} else {
-		for _, e := range r.cfg.Painter.Paint(r.buf, r.idx) {
-			if e == '\t' {
-				buf.WriteString(strings.Repeat(" ", TabWidth))
+		//XXX: output display here
+		tbuf := bytes.NewBuffer(nil)
+		for idx := range r.buf {
+			if r.buf[idx] == '\t' {
+				tbuf.WriteString(strings.Repeat(" ", TabWidth))
 			} else {
-				buf.WriteRune(e)
+				tbuf.WriteRune(r.buf[idx])
 			}
 		}
 		if r.isInLineEdge() {
-			buf.Write([]byte(" \b"))
+			tbuf.Write([]byte(" \b"))
+		}
+		if r.cfg.Output != nil {
+			// Transform buffer here
+			buf.WriteString(r.cfg.Output(tbuf.String()))
+		} else {
+			buf.WriteString(tbuf.String())
+
 		}
 	}
-	// cursor position
 	if len(r.buf) > r.idx {
-		buf.Write(r.getBackspaceSequence())
+		buf.Write(r.cursorPosition())
 	}
 	return buf.Bytes()
 }
 
-func (r *RuneBuffer) getBackspaceSequence() []byte {
-	var sep = map[int]bool{}
+func (r *RuneBuffer) cursorPosition() []byte {
 
-	var i int
-	for {
-		if i >= runes.WidthAll(r.buf) {
-			break
-		}
+	fullWidth := runes.WidthAll(r.buf) + r.promptLen()             // full line Width
+	lineCount := LineCount(r.width-1, fullWidth) - 1               // Total line count
+	cursorWidth := (runes.WidthAll(r.buf[:r.idx])) + r.promptLen() // cursor line Width
+	desiredLine := (cursorWidth / r.width)                         // get Line position starting from prompt
+	desiredCol := cursorWidth % r.width                            // get column position starting from prompt
+	tbuf := bytes.NewBuffer(nil)
 
-		if i == 0 {
-			i -= r.promptLen()
-		}
-		i += r.width
-
-		sep[i] = true
+	if lineCount > 0 || fullWidth == r.width {
+		tbuf.WriteString(fmt.Sprintf("\033[%dA", lineCount))
 	}
-	var buf []byte
-	for i := len(r.buf); i > r.idx; i-- {
-		// move input to the left of one
-		buf = append(buf, '\b')
-		if sep[i] {
-			// up one line, go to the start of the line and move cursor right to the end (r.width)
-			buf = append(buf, "\033[A\r"+"\033["+strconv.Itoa(r.width)+"C"...)
-		}
+	tbuf.WriteString("\r") // go back anyway
+	// Position cursor
+	if desiredLine > 0 {
+		tbuf.WriteString(fmt.Sprintf("\033[%dB", desiredLine)) // Reset
+	}
+	if desiredCol > 0 {
+		tbuf.WriteString(fmt.Sprintf("\033[%dC", desiredCol)) // Reset
 	}
 
-	return buf
+	return tbuf.Bytes()
 
 }
 
@@ -574,7 +581,6 @@ func (r *RuneBuffer) SetStyle(start, end int, style string) {
 	r.w.Write([]byte("\033[" + style + "m"))
 	r.w.Write([]byte(string(r.buf[start:end])))
 	r.w.Write([]byte("\033[0m"))
-	// TODO: move back
 }
 
 func (r *RuneBuffer) SetWithIdx(idx int, buf []rune) {

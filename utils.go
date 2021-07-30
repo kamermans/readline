@@ -21,7 +21,7 @@ const (
 	CharLineStart = 1
 	CharBackward  = 2
 	CharInterrupt = 3
-	CharDelete    = 4
+	CharEOT       = 4
 	CharLineEnd   = 5
 	CharForward   = 6
 	CharBell      = 7
@@ -45,12 +45,15 @@ const (
 	CharBackspace = 127
 )
 
+//Extra virtual keys
 const (
-	MetaBackward rune = -iota - 1
+	MetaBackward rune = 0xE000 + iota /*-iota - 1*/ // private unicode space?
 	MetaForward
 	MetaDelete
 	MetaBackspace
 	MetaTranspose
+	MetaShiftTab
+	CharDelete
 )
 
 // WaitForResume need to call before current process got suspend.
@@ -100,6 +103,8 @@ func IsPrintable(key rune) bool {
 func escapeExKey(key *escapeKeyPair) rune {
 	var r rune
 	switch key.typ {
+	case 'Z':
+		r = MetaShiftTab
 	case 'D':
 		if key.attr == "1;5" {
 			r = MetaBackward
@@ -122,10 +127,10 @@ func escapeExKey(key *escapeKeyPair) rune {
 		r = CharLineEnd
 	case '~':
 		switch key.attr {
-		case "1":
-			r = CharLineStart
 		case "3":
 			r = CharDelete
+		case "1":
+			r = CharLineStart
 		case "4":
 			r = CharLineEnd
 		}
