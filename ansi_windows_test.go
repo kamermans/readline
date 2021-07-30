@@ -1,5 +1,7 @@
 // +build windows
+
 // visual test
+
 package readline
 
 import (
