@@ -3,7 +3,6 @@
 package readline
 
 import (
-	"fmt"
 	"unsafe"
 )
 
@@ -70,7 +69,7 @@ next:
 		}
 		goto next
 	}
-	fmt.Printf("%X: %X\n", ker.unicodeChar, ker.wVirtualKeyCode)
+
 	if ker.unicodeChar == 0 {
 		var target rune
 		switch ker.wVirtualKeyCode {
