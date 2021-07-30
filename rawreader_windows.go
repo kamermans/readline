@@ -2,7 +2,9 @@
 
 package readline
 
-import "unsafe"
+import (
+	"unsafe"
+)
 
 const (
 	VK_CANCEL   = 0x03
@@ -17,6 +19,8 @@ const (
 	VK_UP       = 0x26
 	VK_RIGHT    = 0x27
 	VK_DOWN     = 0x28
+	VK_END      = 0x23
+	VK_HOME     = 0x24
 	VK_DELETE   = 0x2E
 	VK_LSHIFT   = 0xA0
 	VK_RSHIFT   = 0xA1
@@ -74,13 +78,27 @@ next:
 		case VK_MENU: //alt
 			r.altKey = true
 		case VK_LEFT:
-			target = CharBackward
+			if r.ctrlKey || r.altKey {
+				target = MetaBackward
+			} else {
+				target = CharBackward
+			}
 		case VK_RIGHT:
-			target = CharForward
+			if r.ctrlKey || r.altKey {
+				target = MetaForward
+			} else {
+				target = CharForward
+			}
 		case VK_UP:
 			target = CharPrev
 		case VK_DOWN:
 			target = CharNext
+		case VK_DELETE:
+			target = CharDelete
+		case VK_HOME:
+			target = CharLineStart
+		case VK_END:
+			target = CharLineEnd
 		}
 		if target != 0 {
 			return r.write(buf, target)

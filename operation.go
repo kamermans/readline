@@ -282,6 +282,13 @@ func (o *Operation) ioloop() {
 				if !o.buf.Delete() {
 					o.t.Bell()
 				}
+			}
+		case CharEOT:
+			if o.buf.Len() > 0 || !o.IsNormalMode() {
+				o.t.KickRead()
+				if !o.buf.Delete() {
+					o.t.Bell()
+				}
 				break
 			}
 
@@ -321,6 +328,8 @@ func (o *Operation) ioloop() {
 			isUpdateHistory = false
 			o.history.Revert()
 			o.errchan <- &InterruptError{remain}
+		case MetaShiftTab:
+			// do nothing
 		default:
 			if o.IsSearchMode() {
 				o.SearchChar(r)
@@ -385,7 +394,7 @@ func (o *Operation) Runes() ([]rune, error) {
 		listener.OnChange(nil, 0, 0)
 	}
 
-	o.buf.Refresh(nil) // print prompt
+	o.buf.Print() // print prompt
 	o.t.KickRead()
 	select {
 	case r := <-o.outchan:
